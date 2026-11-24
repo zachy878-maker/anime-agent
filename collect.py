@@ -2,10 +2,11 @@ import asyncio, os, re
 from playwright.async_api import async_playwright
 
 URL = os.environ.get("ANIME_URL") or "https://animeclips.online/attack-on-titan/"
-SEASONS = [s.strip() for s in (os.environ.get("SEASONS") or "Season 1").split(",") if s.strip()]
+SEASONS = [s.strip() for s in (os.environ.get("SEASONS") or "Season 1,Season 2,Season 3,Season 4").split(",") if s.strip()]
 MAX_CLIPS = int(os.environ.get("MAX_CLIPS") or 12)
 DELAY = 6000
 HAVE = set(open("have.txt").read().split()) if os.path.exists("have.txt") else set()
+DONE = set(open("done.txt").read().splitlines()) if os.path.exists("done.txt") else set()
 
 NAMES_JS = """(sel) => [...document.querySelectorAll(sel)].map(
     e => (e.getAttribute('data-name') || e.innerText).trim().split('\\n')[0].trim())"""
@@ -45,6 +46,9 @@ async def main():
             for idx, ep in enumerate(episodes):
                 if saved >= MAX_CLIPS or fails >= 3:
                     break
+                key = f"{URL}|{season}|{ep}"
+                if key in DONE:
+                    continue
                 try:
                     await open_season(page, season)
                     await page.locator(".entry.folder[data-id]:not(.pf)").nth(idx).click(timeout=10000)
@@ -56,8 +60,11 @@ async def main():
                     print("cannot open", ep, str(e)[:100])
                     continue
                 files = page.locator(".entry.file[data-id]")
+                finished = True
+                all_ok = True
                 for i in todo:
                     if saved >= MAX_CLIPS or fails >= 3:
+                        finished = False
                         break
                     try:
                         entry = files.nth(i)
@@ -74,9 +81,14 @@ async def main():
                         print("saved", name)
                     except Exception as e:
                         fails += 1
+                        all_ok = False
                         print("clip failed:", str(e)[:120].replace("\n", " "))
                     await page.keyboard.press("Escape")
                     await page.wait_for_timeout(DELAY)
+                if finished and all_ok:
+                    DONE.add(key)
+                    with open("done.txt", "a") as f:
+                        f.write(key + "\n")
         print("done:", saved, "saved")
         await browser.close()
 
