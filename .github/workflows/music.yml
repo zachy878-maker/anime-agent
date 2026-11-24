@@ -1,0 +1,34 @@
+name: music
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "Search words (phonk, electronic, epic, lofi...)"
+        default: "electronic"
+      max_tracks:
+        description: "How many songs"
+        default: "10"
+permissions:
+  contents: write
+jobs:
+  music:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg && pip install requests
+      - run: |
+          gh release view songs >/dev/null 2>&1 || gh release create songs --title songs --notes "music library"
+          gh release view songs --json assets -q '.assets[].name' > have_songs.txt
+          gh release download songs --pattern credits.csv --clobber 2>/dev/null || true
+      - run: python music.py
+        env:
+          QUERY: ${{ inputs.query }}
+          MAX_TRACKS: ${{ inputs.max_tracks }}
+      - run: |
+          if ls songs_out/*.mp3 >/dev/null 2>&1; then gh release upload songs songs_out/*.mp3 --clobber; fi
+          if [ -f credits.csv ]; then gh release upload songs credits.csv --clobber; fi
