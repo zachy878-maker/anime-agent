@@ -1,0 +1,34 @@
+name: collect
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season folder name"
+        default: "Season 1"
+      episode:
+        description: "Episode number"
+        default: "1"
+      count:
+        description: "How many clips"
+        default: "3"
+permissions:
+  contents: write
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && playwright install --with-deps chromium
+      - run: python collect.py
+        env:
+          SEASON: ${{ inputs.season }}
+          EPISODE: ${{ inputs.episode }}
+          COUNT: ${{ inputs.count }}
+      - run: |
+          gh release view clips || gh release create clips --title clips --notes "clip library"
+          gh release upload clips out/*.mp4 --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
