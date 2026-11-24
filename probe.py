@@ -3,6 +3,13 @@ from playwright.async_api import async_playwright
 
 URL = "https://animeclips.online/attack-on-titan/"
 
+async def show(page, label):
+    items = await page.evaluate("""() => [...document.querySelectorAll('.entry[data-id]')]
+        .map(e => e.className.slice(0, 40) + ' | ' + (e.getAttribute('data-name') || e.innerText.slice(0, 50)))""")
+    print(f"=== {label}: {len(items)} entries ===")
+    for i in items[:8]:
+        print(i)
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -10,35 +17,30 @@ async def main():
         await page.goto(URL, wait_until="networkidle")
         await page.wait_for_timeout(5000)
 
-        loc = page.get_by_text("Season 1", exact=True)
         try:
-            await loc.nth(1).click(timeout=8000)
-            await page.wait_for_timeout(10000)
-            print("clicked ok")
+            await page.get_by_text("Season 1", exact=True).nth(1).click(timeout=8000)
+            await page.wait_for_timeout(8000)
+            await show(page, "SEASON 1 CONTENTS")
+
+            await page.locator(".entry[data-id]").first.click(timeout=8000)
+            await page.wait_for_timeout(8000)
+            await show(page, "FIRST EPISODE CONTENTS")
+
+            await page.locator(".entry[data-id]").first.click(timeout=8000)
+            await page.wait_for_timeout(8000)
+            print("=== AFTER CLICKING FIRST CLIP ===")
+            found = await page.evaluate("""() => {
+                const out = [];
+                document.querySelectorAll('a[download], video, source, [class*="download"], [data-action*="download"]').forEach(e => {
+                    out.push(e.tagName + ' | ' + e.className + ' | ' + (e.getAttribute('data-action') || '') + ' | ' + (e.href || e.src || '').slice(0, 150));
+                });
+                return out.slice(0, 15);
+            }""")
+            for f in found:
+                print(f)
         except Exception as e:
-            print("CLICK FAILED:", str(e)[:300])
+            print("STOPPED:", str(e)[:400])
 
-        count = await page.evaluate("() => document.querySelectorAll('.entry[data-id]').length")
-        print("=== ENTRY COUNT ===", count)
-
-        names = await page.evaluate("""() => [...document.querySelectorAll('.entry[data-id]')]
-            .slice(0, 10).map(e => e.getAttribute('data-name') || e.innerText.slice(0, 60))""")
-        print("=== FIRST NAMES ===")
-        for n in names:
-            print(n)
-
-        html = await page.evaluate("""() => {
-            const e = document.querySelector('.entry[data-id]');
-            return e ? e.outerHTML.slice(0, 900) : 'none';
-        }""")
-        print("=== FIRST ENTRY HTML ===")
-        print(html)
-
-        btns = await page.evaluate("""() => [...document.querySelectorAll('[class*="download"], [data-action*="download"]')]
-            .slice(0, 8).map(e => e.tagName + ' ' + e.className + ' ' + (e.getAttribute('data-action') || ''))""")
-        print("=== DOWNLOAD BUTTONS ===")
-        for b in btns:
-            print(b)
         await browser.close()
 
 asyncio.run(main())
