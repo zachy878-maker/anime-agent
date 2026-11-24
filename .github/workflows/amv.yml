@@ -1,0 +1,47 @@
+name: amv
+on:
+  workflow_dispatch:
+    inputs:
+      anime:
+        description: "Clip name filter (blank = all clips)"
+        default: ""
+      clips:
+        description: "How many clips to use"
+        default: "60"
+      start:
+        description: "Start second in the song"
+        default: "0"
+      length:
+        description: "Video seconds"
+        default: "150"
+permissions:
+  contents: write
+jobs:
+  amv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - run: pip install librosa numpy
+      - run: |
+          mkdir -p clips
+          gh release view clips --json assets -q '.assets[].name' | grep -i -- "$ANIME" | shuf -n "${COUNT:-60}" > pick.txt
+          while read n; do gh release download clips --pattern "$n" --dir clips; done < pick.txt
+        env:
+          ANIME: ${{ inputs.anime }}
+          COUNT: ${{ inputs.clips }}
+      - run: python render_amv.py
+        env:
+          START: ${{ inputs.start }}
+          DURATION: ${{ inputs.length }}
+      - run: |
+          mv out/edit.mp4 out/amv-${{ github.run_number }}.mp4
+          mv credit.txt out/amv-${{ github.run_number }}-clips.txt
+          gh release view edits >/dev/null 2>&1 || gh release create edits --title edits --notes "finished videos"
+          gh release upload edits out/amv-${{ github.run_number }}.mp4 out/amv-${{ github.run_number }}-clips.txt --clobber
