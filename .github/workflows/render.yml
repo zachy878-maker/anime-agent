@@ -5,17 +5,21 @@ on:
       anime:
         description: "Clip name filter"
         default: "Attack_on_Titan"
+      mood:
+        description: "hype or emotional"
+        default: "hype"
       caption:
-        description: "Caption (optional)"
+        description: "Hook line (optional, use / for a line break)"
         default: ""
       length:
-        description: "Seconds"
-        default: "25"
+        description: "Total seconds"
+        default: "30"
 permissions:
   contents: write
 jobs:
   render:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -23,23 +27,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: pip install librosa
       - run: |
           mkdir -p clips
-          gh release view clips --json assets -q '.assets[].name' | grep -i -- "${ANIME:-Attack_on_Titan}" | shuf -n 30 > pick.txt
+          gh release view clips --json assets -q '.assets[].name' | grep -i -- "${ANIME:-Attack_on_Titan}" | shuf -n 40 > pick.txt
           while read n; do gh release download clips --pattern "$n" --dir clips; done < pick.txt
         env:
           ANIME: ${{ inputs.anime }}
       - run: |
           mkdir -p songs
-          gh release view songs --json assets -q '.assets[].name' | grep '\.mp3$' | shuf -n 1 > song_pick.txt
-          gh release download songs --pattern "$(cat song_pick.txt)" --dir songs
+          gh release view songs --json assets -q '.assets[].name' | grep '\.mp3$' | shuf -n 6 > song_pick.txt
+          while read n; do gh release download songs --pattern "$n" --dir songs; done < song_pick.txt
           gh release download songs --pattern credits.csv --clobber || true
-          grep -F "$(cat song_pick.txt)" credits.csv > credit.txt || touch credit.txt
       - run: python render.py
         env:
           DURATION: ${{ inputs.length }}
+          MOOD: ${{ inputs.mood }}
           CAPTION: ${{ inputs.caption }}
       - run: |
           mv out/edit.mp4 out/edit-${{ github.run_number }}.mp4
