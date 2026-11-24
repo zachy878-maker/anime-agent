@@ -3,20 +3,32 @@ from playwright.async_api import async_playwright
 
 URL = "https://animeclips.online/attack-on-titan/"
 
+def log_req(r):
+    if "admin-ajax" in r.url:
+        print("AJAX:", (r.post_data or "")[:400])
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page(viewport={"width": 1280, "height": 900})
+        page.on("request", log_req)
         await page.goto(URL, wait_until="networkidle")
         await page.wait_for_timeout(5000)
 
-        def log_req(r):
-            if "admin-ajax" in r.url:
-                print("AJAX:", (r.post_data or "")[:400])
-        page.on("request", log_req)
+        loc = page.get_by_text("Season 1", exact=True)
+        n = await loc.count()
+        print("=== SEASON 1 MATCHES ===", n)
+        for i in range(n):
+            html = await loc.nth(i).evaluate("e => e.outerHTML.slice(0, 200)")
+            vis = await loc.nth(i).is_visible()
+            print(i, "visible" if vis else "hidden", html)
 
-        await page.get_by_text("Season 1", exact=True).first.click()
-        await page.wait_for_timeout(10000)
+        try:
+            await loc.first.click(timeout=8000, force=True)
+            await page.wait_for_timeout(10000)
+            print("clicked ok")
+        except Exception as e:
+            print("CLICK FAILED:", str(e)[:300])
 
         print("=== FILE ROWS ===")
         rows = await page.evaluate("""() => [...document.querySelectorAll('[class*="entry"]')]
