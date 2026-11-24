@@ -1,5 +1,16 @@
 name: render
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      anime:
+        description: "Clip name filter"
+        default: "Attack_on_Titan"
+      caption:
+        description: "Caption (optional)"
+        default: ""
+      length:
+        description: "Seconds"
+        default: "25"
 permissions:
   contents: write
 jobs:
@@ -12,10 +23,17 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install librosa
-      - run: gh release download clips --pattern "*.mp4" --dir clips
+      - run: |
+          mkdir -p clips
+          gh release view clips --json assets -q '.assets[].name' | grep -i -- "${ANIME:-Attack_on_Titan}" | shuf -n 30 > pick.txt
+          while read n; do gh release download clips --pattern "$n" --dir clips; done < pick.txt
         env:
           GH_TOKEN: ${{ github.token }}
+          ANIME: ${{ inputs.anime }}
       - run: python render.py
+        env:
+          DURATION: ${{ inputs.length }}
+          CAPTION: ${{ inputs.caption }}
       - run: |
           mv out/edit.mp4 out/edit-${{ github.run_number }}.mp4
           gh release view edits || gh release create edits --title edits --notes "finished videos"
