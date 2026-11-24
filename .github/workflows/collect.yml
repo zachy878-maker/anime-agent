@@ -4,7 +4,7 @@ on:
     inputs:
       anime_url:
         description: "Anime page link"
-        default: "https://animeclips.online/attack-on-titan/"
+        default: "https://animeclips.online/horimiya/"
       seasons:
         description: "Folders, comma separated"
         default: "Season 1,Season 2,Season 3,Season 4"
