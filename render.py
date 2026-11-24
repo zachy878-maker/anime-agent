@@ -293,4 +293,35 @@ if caps_text:
     caps.append(dt(write_cap(0, caps_text[0]), 0.5, INTRO - 0.2, "(h-text_h)/2-80", 84))
 if len(caps_text) > 1:
     t0 = INTRO + hold_at
-    caps.append(dt(write_cap(1,
+    caps.append(dt(write_cap(1, caps_text[1]), t0, t0 + 2.6, "h*0.68", 72))
+
+# ---------- final mix ----------
+D = int((INTRO - PRE) * 1000)
+def final(with_caps):
+    v = (caps if with_caps else []) + [f"fade=t=out:st={TOTALV - 1:.2f}:d=1"]
+    fc = (f"[0:v]{','.join(v)}[v];"
+          f"[1:a]afade=t=out:st={INTRO - 0.9:.2f}:d=0.9[ia];"
+          f"[2:a]afade=t=in:st=0:d={PRE},adelay={D}|{D}[sa];"
+          f"[ia][sa]amix=inputs=2:duration=longest:normalize=0,"
+          f"loudnorm=I=-14:TP=-1.5,afade=t=out:st={TOTALV - 1:.2f}:d=1[a]")
+    ff(["-i", "tmp/video.mp4", "-i", "tmp/intro_a.wav",
+        "-ss", f"{offset - PRE:.2f}", "-t", f"{SONGLEN + PRE:.2f}", "-i", song,
+        "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-t", f"{TOTALV:.2f}", "out/edit.mp4"])
+
+try:
+    final(True)
+except subprocess.CalledProcessError:
+    print("captions failed, rendering without them")
+    final(False)
+
+# ---------- credit file ----------
+name = os.path.basename(song)
+with open("credit.txt", "w") as f:
+    if os.path.exists("credits.csv"):
+        for line in open("credits.csv"):
+            if line.startswith(name + "|"):
+                f.write("MUSIC: " + line)
+    f.write("\nCLIPS USED (add bad ones to banned.txt):\n" + "\n".join(log) + "\n")
+print("done: out/edit.mp4")
