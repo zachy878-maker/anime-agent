@@ -16,6 +16,8 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,15 +30,19 @@ jobs:
           gh release view clips --json assets -q '.assets[].name' | grep -i -- "${ANIME:-Attack_on_Titan}" | shuf -n 30 > pick.txt
           while read n; do gh release download clips --pattern "$n" --dir clips; done < pick.txt
         env:
-          GH_TOKEN: ${{ github.token }}
           ANIME: ${{ inputs.anime }}
+      - run: |
+          mkdir -p songs
+          gh release view songs --json assets -q '.assets[].name' | grep '\.mp3$' | shuf -n 1 > song_pick.txt
+          gh release download songs --pattern "$(cat song_pick.txt)" --dir songs
+          gh release download songs --pattern credits.csv --clobber || true
+          grep -F "$(cat song_pick.txt)" credits.csv > credit.txt || touch credit.txt
       - run: python render.py
         env:
           DURATION: ${{ inputs.length }}
           CAPTION: ${{ inputs.caption }}
       - run: |
           mv out/edit.mp4 out/edit-${{ github.run_number }}.mp4
-          gh release view edits || gh release create edits --title edits --notes "finished videos"
-          gh release upload edits out/*.mp4 --clobber
-        env:
-          GH_TOKEN: ${{ github.token }}
+          mv credit.txt out/edit-${{ github.run_number }}-credit.txt
+          gh release view edits >/dev/null 2>&1 || gh release create edits --title edits --notes "finished videos"
+          gh release upload edits out/edit-${{ github.run_number }}.mp4 out/edit-${{ github.run_number }}-credit.txt --clobber
