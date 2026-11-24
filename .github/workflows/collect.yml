@@ -2,33 +2,39 @@ name: collect
 on:
   workflow_dispatch:
     inputs:
-      season:
-        description: "Season folder name"
+      anime_url:
+        description: "Anime page link"
+        default: "https://animeclips.online/attack-on-titan/"
+      seasons:
+        description: "Folders, comma separated"
         default: "Season 1"
-      episode:
-        description: "Episode number"
-        default: "1"
-      count:
-        description: "How many clips"
-        default: "3"
+      max_clips:
+        description: "Clips per run"
+        default: "12"
+  schedule:
+    - cron: "0 6 * * 1"
 permissions:
   contents: write
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install playwright && playwright install --with-deps chromium
+      - run: gh release view clips --json assets -q '.assets[].name' > have.txt 2>/dev/null || touch have.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: python collect.py
         env:
-          SEASON: ${{ inputs.season }}
-          EPISODE: ${{ inputs.episode }}
-          COUNT: ${{ inputs.count }}
+          ANIME_URL: ${{ inputs.anime_url }}
+          SEASONS: ${{ inputs.seasons }}
+          MAX_CLIPS: ${{ inputs.max_clips }}
       - run: |
           gh release view clips || gh release create clips --title clips --notes "clip library"
-          gh release upload clips out/*.mp4 --clobber
+          if ls out/*.mp4 >/dev/null 2>&1; then gh release upload clips out/*.mp4 --clobber; fi
         env:
           GH_TOKEN: ${{ github.token }}
