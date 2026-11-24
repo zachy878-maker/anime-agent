@@ -1,0 +1,23 @@
+name: render
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install librosa
+      - run: gh release download clips --pattern "*.mp4" --dir clips
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: python render.py
+      - run: |
+          mv out/edit.mp4 out/edit-${{ github.run_number }}.mp4
+          gh release view edits || gh release create edits --title edits --notes "finished videos"
+          gh release upload edits out/*.mp4 --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
