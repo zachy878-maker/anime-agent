@@ -1,25 +1,16 @@
 export default {
   async fetch() {
     try {
-      const query = `{ Page(perPage: 5) {
-        media(sort: TRENDING_DESC, type: ANIME) {
-          title { romaji }
-        } } }`;
-      const res = await fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "User-Agent": "anime-agent"
-        },
-        body: JSON.stringify({ query })
-      });
+      const res = await fetch(
+        "https://api.jikan.moe/v4/top/anime?filter=airing&limit=5",
+        { headers: { "User-Agent": "anime-agent" } }
+      );
       const text = await res.text();
       let data;
       try { data = JSON.parse(text); }
-      catch { return new Response("AniList replied: " + res.status + "\n" + text.slice(0, 300)); }
-      if (!data.data) return new Response("AniList error:\n" + text.slice(0, 300));
-      const titles = data.data.Page.media.map(m => m.title.romaji);
+      catch { return new Response("Jikan replied: " + res.status + "\n" + text.slice(0, 300)); }
+      if (!data.data) return new Response("Jikan error:\n" + text.slice(0, 300));
+      const titles = data.data.map(a => a.title);
       return new Response(titles.join("\n"));
     } catch (e) {
       return new Response("Error: " + e.message);
