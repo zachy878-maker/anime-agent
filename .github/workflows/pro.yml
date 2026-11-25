@@ -1,0 +1,82 @@
+name: pro
+on:
+  workflow_dispatch:
+    inputs:
+      style:
+        description: "romance, hype, cinematic, or your cloned preset name"
+        default: "romance"
+      format:
+        description: "landscape or vertical"
+        default: "landscape"
+      parallax:
+        description: "2.5D parallax + relight + particles (slow, heavy install)"
+        type: boolean
+        default: false
+      voice:
+        description: "Voice line before the first drop"
+        type: boolean
+        default: true
+      isolate:
+        description: "Isolate the voice with Demucs (experimental, heavy install)"
+        type: boolean
+        default: false
+      look_strength:
+        description: "Look transfer strength 0 to 1 (needs look.jpg)"
+        default: "0.7"
+      anime:
+        description: "Clip name filter (blank = all clips)"
+        default: ""
+      clips:
+        description: "How many clips to use"
+        default: "70"
+      start:
+        description: "Start second in the song"
+        default: "0"
+      length:
+        description: "Video seconds (0 = whole song)"
+        default: "0"
+permissions:
+  contents: write
+jobs:
+  pro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - run: pip install librosa numpy pillow faster-whisper
+      - if: ${{ inputs.parallax || inputs.isolate }}
+        run: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+      - if: ${{ inputs.parallax }}
+        run: pip install transformers opencv-python-headless
+      - if: ${{ inputs.isolate }}
+        run: pip install demucs
+      - run: |
+          mkdir -p clips
+          gh release view clips --json assets -q '.assets[].name' | grep -i -- "$ANIME" | shuf -n "${COUNT:-70}" > pick.txt
+          while read n; do gh release download clips --pattern "$n" --dir clips; done < pick.txt
+        env:
+          ANIME: ${{ inputs.anime }}
+          COUNT: ${{ inputs.clips }}
+      - run: python render_pro.py
+        env:
+          STYLE: ${{ inputs.style }}
+          FORMAT: ${{ inputs.format }}
+          PARALLAX: ${{ inputs.parallax && '1' || '0' }}
+          VOICE: ${{ inputs.voice && '1' || '0' }}
+          ISOLATE: ${{ inputs.isolate && '1' || '0' }}
+          LOOK_STRENGTH: ${{ inputs.look_strength }}
+          START: ${{ inputs.start }}
+          DURATION: ${{ inputs.length }}
+      - run: |
+          N=${{ github.run_number }}
+          mv out/edit.mp4 out/pro-$N.mp4
+          mv credit.txt out/pro-$N-clips.txt
+          mv out/lyrics_auto.srt out/pro-$N-lyrics.srt 2>/dev/null || true
+          gh release view edits >/dev/null 2>&1 || gh release create edits --title edits --notes "finished videos"
+          gh release upload edits out/pro-$N* --clobber
