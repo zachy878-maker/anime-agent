@@ -1,9 +1,10 @@
 import asyncio, os, re
 from playwright.async_api import async_playwright
 
-URL = os.environ.get("ANIME_URL") or "https://animeclips.online/horimiya/"
+URL = os.environ.get("ANIME_URL") or "https://animeclips.online/attack-on-titan/"
 SEASONS = [s.strip() for s in (os.environ.get("SEASONS") or "Season 1,Season 2,Season 3,Season 4").split(",") if s.strip()]
 MAX_CLIPS = int(os.environ.get("MAX_CLIPS") or 12)
+PER_EP = int(os.environ.get("PER_EP") or 3)
 DELAY = 6000
 HAVE = set(open("have.txt").read().split()) if os.path.exists("have.txt") else set()
 DONE = set(open("done.txt").read().splitlines()) if os.path.exists("done.txt") else set()
@@ -15,6 +16,16 @@ def clean(name):
     if not name.lower().endswith(".mp4"):
         name += ".mp4"
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+
+def spread(items, k):
+    if k >= len(items):
+        return list(items)
+    return [items[int((j + 0.5) * len(items) / k)] for j in range(k)]
+
+def mark_done(key):
+    DONE.add(key)
+    with open("done.txt", "a") as f:
+        f.write(key + "\n")
 
 async def open_season(page, season):
     await page.goto(URL, wait_until="networkidle")
@@ -46,7 +57,7 @@ async def main():
             for idx, ep in enumerate(episodes):
                 if saved >= MAX_CLIPS or fails >= 3:
                     break
-                key = f"{URL}|{season}|{ep}"
+                key = f"{URL}|{season}|{ep}|{PER_EP}"
                 if key in DONE:
                     continue
                 try:
@@ -54,17 +65,22 @@ async def main():
                     await page.locator(".entry.folder[data-id]:not(.pf)").nth(idx).click(timeout=10000)
                     await page.wait_for_timeout(8000)
                     names = await page.evaluate(NAMES_JS, ".entry.file[data-id]")
-                    todo = [i for i, n in enumerate(names) if n and clean(n) not in HAVE]
-                    print(season, ep, ":", len(names), "clips,", len(todo), "new")
                 except Exception as e:
                     print("cannot open", ep, str(e)[:100])
                     continue
+                have_here = [i for i, n in enumerate(names) if n and clean(n) in HAVE]
+                todo = [i for i, n in enumerate(names) if n and clean(n) not in HAVE]
+                need = PER_EP - len(have_here)
+                print(season, ep, ":", len(names), "clips,", len(have_here), "owned, need", max(0, need))
+                if need <= 0 or not todo:
+                    mark_done(key)
+                    continue
+                chosen = spread(todo, min(need, MAX_CLIPS - saved))
                 files = page.locator(".entry.file[data-id]")
-                finished = True
                 all_ok = True
-                for i in todo:
-                    if saved >= MAX_CLIPS or fails >= 3:
-                        finished = False
+                for i in chosen:
+                    if fails >= 3:
+                        all_ok = False
                         break
                     try:
                         entry = files.nth(i)
@@ -85,10 +101,8 @@ async def main():
                         print("clip failed:", str(e)[:120].replace("\n", " "))
                     await page.keyboard.press("Escape")
                     await page.wait_for_timeout(DELAY)
-                if finished and all_ok:
-                    DONE.add(key)
-                    with open("done.txt", "a") as f:
-                        f.write(key + "\n")
+                if all_ok and len(chosen) == need:
+                    mark_done(key)
         print("done:", saved, "saved")
         await browser.close()
 
