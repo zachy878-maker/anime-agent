@@ -297,6 +297,7 @@ def build_lyrics():
     write_srt(rows, "tmp/lyrics.srt")
     print("lyric lines:", len(rows))
     return True
+    has_lyrics = build_lyrics
 
 # ---------- final: lyrics + fades + song ----------
 fade = f"fade=t=in:st=0:d=1.5,fade=t=out:st={dur - 3:.2f}:d=3"
