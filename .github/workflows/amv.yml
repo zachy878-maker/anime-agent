@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
-      - run: pip install librosa numpy
+      - run: pip install librosa numpy faster-whisper
       - run: |
           mkdir -p clips
           gh release view clips --json assets -q '.assets[].name' | grep -i -- "$ANIME" | shuf -n "${COUNT:-60}" > pick.txt
