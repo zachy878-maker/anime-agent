@@ -3,7 +3,7 @@ import numpy as np
 import librosa
 
 W, H, FPS, XF = 1920, 1080, 30, 12
-DUR = float(os.environ.get("DURATION") or 150)
+DUR = float(os.environ.get("DURATION") or 0)
 START = float(os.environ.get("START") or 0)
 os.makedirs("out", exist_ok=True)
 os.makedirs("tmp", exist_ok=True)
@@ -26,7 +26,7 @@ if not CLIPS or not SONGS:
 song = SONGS[0]
 
 # ---------- song, beats, energy ----------
-y, sr = librosa.load(song, sr=22050, offset=START, duration=DUR)
+y, sr = librosa.load(song, sr=22050, offset=START, duration=(DUR if DUR>0 else None))
 nframes = int(len(y) / sr * FPS)
 dur = nframes / FPS
 if dur < 30:
