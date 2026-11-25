@@ -3,8 +3,8 @@ from playwright.async_api import async_playwright
 
 URL = os.environ.get("ANIME_URL") or "https://animeclips.online/horimiya/"
 SEASONS = [s.strip() for s in (os.environ.get("SEASONS") or "Season 1,Season 2,Season 3,Season 4").split(",") if s.strip()]
-MAX_CLIPS = int(os.environ.get("MAX_CLIPS") or 12)
-PER_EP = int(os.environ.get("PER_EP") or 3)
+MAX_CLIPS = int(os.environ.get("MAX_CLIPS") or 60)
+PER_EP = int(os.environ.get("PER_EP") or 20)
 DELAY = 6000
 HAVE = set(open("have.txt").read().split()) if os.path.exists("have.txt") else set()
 DONE = set(open("done.txt").read().splitlines()) if os.path.exists("done.txt") else set()
