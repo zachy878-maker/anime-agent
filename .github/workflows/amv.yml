@@ -44,4 +44,4 @@ jobs:
           mv out/edit.mp4 out/amv-${{ github.run_number }}.mp4
           mv credit.txt out/amv-${{ github.run_number }}-clips.txt
           gh release view edits >/dev/null 2>&1 || gh release create edits --title edits --notes "finished videos"
-          gh release upload edits out/amv-${{ github.run_number }}.mp4 out/amv-${{ github.run_number }}-clips.txt --clobber
+                  gh release upload edits out/amv-${{ github.run_number }}* --clobber
