@@ -13,7 +13,7 @@ on:
         default: "0"
       length:
         description: "Video seconds"
-        default: "150"
+        default: "0"
 permissions:
   contents: write
 jobs:
