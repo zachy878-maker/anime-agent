@@ -1,7 +1,7 @@
 import asyncio, os, re
 from playwright.async_api import async_playwright
 
-URL = os.environ.get("ANIME_URL") or "https://animeclips.online/attack-on-titan/"
+URL = os.environ.get("ANIME_URL") or "https://animeclips.online/horimiya/"
 SEASONS = [s.strip() for s in (os.environ.get("SEASONS") or "Season 1,Season 2,Season 3,Season 4").split(",") if s.strip()]
 MAX_CLIPS = int(os.environ.get("MAX_CLIPS") or 12)
 PER_EP = int(os.environ.get("PER_EP") or 3)
