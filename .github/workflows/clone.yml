@@ -1,0 +1,32 @@
+name: clone-style
+on:
+  workflow_dispatch:
+    inputs:
+      reference:
+        description: "Reference video file in the repo"
+        default: "ref_style.mp4"
+      name:
+        description: "Preset name"
+        default: "custom"
+permissions:
+  contents: write
+jobs:
+  clone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install numpy
+      - run: python clone_style.py "$REF" "$NAME"
+        env:
+          REF: ${{ inputs.reference }}
+          NAME: ${{ inputs.name }}
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add styles
+          git commit -m "style preset" || echo "nothing to commit"
+          git push
