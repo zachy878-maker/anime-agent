@@ -517,4 +517,140 @@ def transcribe():
     return rows
 
 def ass_time(t):
-    cs = in
+    cs = int(round(t * 100))
+    return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
+
+def esc(t):
+    return re.sub(r"[{}\\]", "", t).replace("\n", " ").strip()
+
+def write_ass(rows, path):
+    fs, mv = (66, 260) if VERT else (58, 70)
+    head = ("[Script Info]\nScriptType: v4.00+\n"
+            f"PlayResX: {W}\nPlayResY: {H}\nWrapStyle: 0\n\n"
+            "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+            "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, "
+            "Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+            f"Style: Lyric,DejaVu Sans,{fs},&H00FFFFFF,&H00D0B0FF,&H00101010,&H96000000,"
+            f"1,0,0,0,100,100,1,0,1,3,2,2,60,60,{mv},1\n\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+    lines = []
+    for s, e, text, words in rows:
+        anim = "{\\fad(220,260)\\blur6\\fscx118\\fscy118\\t(0,260,\\blur0\\fscx100\\fscy100)"
+        for b in [b for b in bt if s + 0.35 < b < e - 0.25][::2][:14]:
+            r = int((b - s) * 1000)
+            anim += f"\\t({r},{r + 90},\\fscx106\\fscy106)\\t({r + 90},{r + 260},\\fscx100\\fscy100)"
+        anim += "}"
+        if words:
+            body = ""
+            for j, (ws, we, w) in enumerate(words):
+                nx = words[j + 1][0] if j + 1 < len(words) else we
+                body += "{\\kf" + str(max(1, int((nx - ws) * 100))) + "}" + esc(w) + " "
+        else:
+            body = esc(text)
+        lines.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},Lyric,,0,0,0,,{anim}{body.strip()}")
+    open(path, "w", encoding="utf-8").write(head + "\n".join(lines) + "\n")
+
+def build_lyrics():
+    rows, entries = [], None
+    for name, parser in (("lyrics.srt", parse_srt), ("lyrics.lrc", parse_lrc)):
+        if os.path.exists(name):
+            entries = parser(open(name, encoding="utf-8", errors="ignore").read())
+            break
+    if entries:
+        for s, e, t in entries:
+            s2, e2 = max(0.0, s - START), min(dur, e - START)
+            if e2 - s2 > 0.2 and t:
+                rows.append((s2, e2, t, None))
+    elif (E("AUTO_LYRICS") or "1") != "0":
+        print("no lyrics file found, transcribing the song...")
+        try:
+            raw = transcribe()
+        except Exception as ex:
+            print("transcription failed:", str(ex)[:200])
+            raw = []
+        for i, r in enumerate(raw):
+            e = min(r[1], raw[i + 1][0] - 0.05) if i + 1 < len(raw) else r[1]
+            if e - r[0] > 0.2:
+                rows.append((r[0], e, r[2], r[3]))
+        if rows:
+            with open("out/lyrics_auto.srt", "w", encoding="utf-8") as f:
+                for i, (s, e, t, _) in enumerate(rows, 1):
+                    f.write(f"{i}\n{tc(s + START)} --> {tc(e + START)}\n{t}\n\n")
+    if not rows:
+        return False
+    write_ass(rows, "tmp/lyrics.ass")
+    print("lyric lines:", len(rows))
+    return True
+
+has_ass = build_lyrics()
+
+# ---------- audio design + final mix ----------
+def audio_graph():
+    fmt = "aformat=sample_rates=44100:channel_layouts=stereo"
+    inputs = ["-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=44100:cl=stereo"]
+    parts, labels, dips, k = [], [], [], 3
+    for d in drops:
+        for src, length, chain in (
+                ("anoisesrc=c=white:a=0.5:d=2.0", 2.0,
+                 f"highpass=f=900,afade=t=in:st=0:d=2.0,volume=0.6,adelay={ms(d - 2.0)}|{ms(d - 2.0)}"),
+                ("sine=frequency=46:sample_rate=44100:duration=1.6", 1.6,
+                 f"afade=t=out:st=0.05:d=1.5,volume=5,adelay={ms(d)}|{ms(d)}"),
+                ("anoisesrc=c=pink:a=0.6:d=1.2", 1.2,
+                 f"lowpass=f=4500,afade=t=out:st=0:d=1.2,volume=0.8,adelay={ms(d)}|{ms(d)}")):
+            inputs += ["-f", "lavfi", "-t", f"{length}", "-i", src]
+            parts.append(f"[{k}:a]{fmt},{chain}[e{k}]")
+            labels.append(f"[e{k}]")
+            k += 1
+        dips.append((d - 0.3, d, 0.08))
+    if voice_info:
+        vs, vl = voice_info
+        inputs += ["-i", "tmp/voice.wav"]
+        parts.append(f"[{k}:a]{fmt},volume=1.5,adelay={ms(vs)}|{ms(vs)}[e{k}]")
+        labels.append(f"[e{k}]")
+        dips.append((vs, vs + vl, 0.3))
+    expr = "*".join(f"if(between(t,{a:.2f},{b:.2f}),{g},1)" for a, b, g in dips) or "1"
+    parts.append(f"[1:a]{fmt},volume='{expr}':eval=frame,afade=t=in:d=1,afade=t=out:st={dur - 4:.2f}:d=4[sg]")
+    if labels:
+        parts.append(f"[2:a]{''.join(labels)}amix=inputs={len(labels) + 1}:duration=longest:normalize=0,"
+                     f"atrim=0:{dur:.3f}[bus]")
+        parts.append("[bus]asplit=2[sc][bm]")
+        parts.append("[sg][sc]sidechaincompress=threshold=0.06:ratio=5:attack=8:release=350[duck]")
+        parts.append("[duck][bm]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
+    else:
+        parts.append("[sg]loudnorm=I=-14:TP=-1.5[a]")
+    return inputs, parts
+
+def run_final(use_ass, use_fx):
+    inputs = ["-i", "tmp/video.mp4", "-ss", f"{START:.2f}", "-t", f"{dur:.3f}", "-i", song]
+    vf = ["ass=tmp/lyrics.ass:fontsdir=/usr/share/fonts/truetype/dejavu"] if use_ass else []
+    vf.append(f"fade=t=in:st=0:d=1.5,fade=t=out:st={dur - 3:.2f}:d=3")
+    parts = [f"[0:v]{','.join(vf)}[v]"]
+    if use_fx:
+        extra, ap = audio_graph()
+        inputs += extra
+        parts += ap
+    else:
+        parts.append(f"[1:a]afade=t=in:d=1,afade=t=out:st={dur - 4:.2f}:d=4,loudnorm=I=-14:TP=-1.5[a]")
+    ff(inputs + ["-filter_complex", ";".join(parts), "-map", "[v]", "-map", "[a]",
+                 "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p",
+                 "-c:a", "aac", "-b:a", "192k", "-t", f"{dur:.3f}", "-movflags", "+faststart",
+                 "out/edit.mp4"])
+
+tries = []
+for combo in ((has_ass, True), (False, True), (has_ass, False), (False, False)):
+    if combo not in tries:
+        tries.append(combo)
+for use_ass, use_fx in tries:
+    try:
+        run_final(use_ass, use_fx)
+        print("final render ok | lyrics:", use_ass, "| sound design:", use_fx)
+        break
+    except subprocess.CalledProcessError:
+        print("final render failed with lyrics =", use_ass, "sound design =", use_fx, "- trying simpler")
+else:
+    raise SystemExit("final render failed")
+
+with open("credit.txt", "w") as f:
+    f.write(f"STYLE: {STYLE} | drops at: {[round(d, 1) for d in drops]}\n")
+    f.write("CLIPS USED (add bad ones to banned.txt):\n" + "\n".join(log) + "\n")
+print("done: out/edit.mp4,", round(dur, 1), "seconds")
