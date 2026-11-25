@@ -238,27 +238,65 @@ def tc(t):
     return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
 
 def build_lyrics():
+    def write_srt(rows, path, shift=0.0):
+    with open(path, "w", encoding="utf-8") as f:
+        for i, (s, e, t) in enumerate(rows, 1):
+            f.write(f"{i}\n{tc(s + shift)} --> {tc(e + shift)}\n{t}\n\n")
+
+def transcribe():
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("faster-whisper is not installed")
+        return []
+    ff(["-ss", f"{START:.2f}", "-t", f"{dur:.3f}", "-i", song,
+        "-vn", "-ac", "1", "-ar", "16000", "tmp/excerpt.wav"])
+    model = WhisperModel(os.environ.get("WHISPER_MODEL") or "small",
+                         device="cpu", compute_type="int8")
+    segs, info = model.transcribe(
+        "tmp/excerpt.wav", language=(os.environ.get("LYRICS_LANG") or None),
+        vad_filter=True, condition_on_previous_text=False, beam_size=5)
+    rows, last = [], ""
+    for s in segs:
+        t = s.text.strip()
+        if not t or s.no_speech_prob > 0.6 or s.avg_logprob < -1.3:
+            continue
+        if t.lower() == last.lower():
+            continue
+        last = t
+        rows.append((max(0.0, s.start), min(dur, s.end), t))
+    print("language:", info.language, "| lines found:", len(rows))
+    return rows
+
+def build_lyrics():
+    rows = []
     entries = None
     for name, parser in (("lyrics.srt", parse_srt), ("lyrics.lrc", parse_lrc)):
         if os.path.exists(name):
             entries = parser(open(name, encoding="utf-8", errors="ignore").read())
             break
-    if not entries:
-        return False
-    rows = []
-    for s, e, t in entries:
-        s2, e2 = max(0.0, s - START), min(dur, e - START)
-        if e2 - s2 > 0.2 and t:
-            rows.append((s2, e2, t))
+    if entries:
+        for s, e, t in entries:
+            s2, e2 = max(0.0, s - START), min(dur, e - START)
+            if e2 - s2 > 0.2 and t:
+                rows.append((s2, e2, t))
+    elif (os.environ.get("AUTO_LYRICS") or "1") != "0":
+        print("no lyrics file found, transcribing the song...")
+        try:
+            rows = transcribe()
+        except Exception as ex:
+            print("transcription failed:", str(ex)[:200])
+            rows = []
+        for i in range(len(rows) - 1):
+            rows[i] = (rows[i][0], min(rows[i][1], rows[i + 1][0] - 0.05), rows[i][2])
+        rows = [r for r in rows if r[1] - r[0] > 0.2]
+        if rows:
+            write_srt(rows, "out/lyrics_auto.srt", shift=START)
     if not rows:
         return False
-    with open("tmp/lyrics.srt", "w", encoding="utf-8") as f:
-        for i, (s, e, t) in enumerate(rows, 1):
-            f.write(f"{i}\n{tc(s)} --> {tc(e)}\n{t}\n\n")
+    write_srt(rows, "tmp/lyrics.srt")
     print("lyric lines:", len(rows))
     return True
-
-has_lyrics = build_lyrics()
 
 # ---------- final: lyrics + fades + song ----------
 fade = f"fade=t=in:st=0:d=1.5,fade=t=out:st={dur - 3:.2f}:d=3"
